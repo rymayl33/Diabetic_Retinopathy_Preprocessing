@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch
 import matplotlib.pyplot as plt
 import pandas as pd
+from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.under_sampling import RandomUnderSampler
@@ -246,7 +247,7 @@ def evaluate(model, dataloader):
     all_preds = []
     all_labels = []
 
-    for images, labels in dataloader:
+    for images, labels in tqdm(dataloader):
         images, labels = images.to(device), labels.to(device)
 
         outputs = model(images)
