@@ -78,48 +78,33 @@ def get_data_loaders(train, val, test1, test2, batch_size, preprocess=None):
 
     return train_loader, val_loader, test_loader1, test_loader2, test_dataset1, test_dataset2
 
-def frangi_preprocessing(img, use_median_blur=False):
-    # Convert PIL to numpy
-    img = np.array(img)
 
-    # Convert to Grayscale (for vessel enhancement)
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-
-    # Frangi or Hessian
-    vessel_img = frangi(img)  # or hessian(clahe_img)
-    vessel_img = (vessel_img * 255).astype('uint8')
-
-    if use_median_blur:
-        vessel_img = cv2.medianBlur(vessel_img, 3)
-    else:
-        vessel_img = cv2.GaussianBlur(vessel_img, (3, 3), 1)
-
-    # Merge vessel map as extra channel
-    # vessel_img = np.expand_dims(vessel_img, axis=2)
-    # vessel_img = np.concatenate((img, vessel_img), axis=2)
-
-    # Convert back to PIL
-    return Image.fromarray(vessel_img)
+def scale_radius(img, scale=300):
+    # Estimate radius from middle row intensity
+    x = img[img.shape[0] // 2, :, :].sum(1)
+    r = (x > x.mean() / 10).sum() / 2
+    s = scale * 1.0 / r
+    return cv2.resize(img, (0, 0), fx=s, fy=s)
 
 
-def hessian_preprocessing(img, use_median_blur=False):
-    # Convert PIL to numpy
-    img = np.array(img)
+def gaussian_subtractive_normalization(img, scale=300):
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) 
 
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    # Step 1: Scale to standard radius
+    img = scale_radius(img, scale)
 
-    # Frangi or Hessian Vessel Enhancement
-    vessel_img = hessian(img)  # Apply Hessian on green channel
-    vessel_img = (vessel_img * 255).astype('uint8')
+    # Step 2: Subtract local average color (local contrast normalization)
+    blur = cv2.GaussianBlur(img, (0, 0), scale / 30)
+    img = cv2.addWeighted(img, 4, blur, -4, 128)
 
-    # Optional Blur (Gaussian or Median)
-    if use_median_blur:
-        vessel_img = cv2.medianBlur(vessel_img, 3)
-    else:
-        vessel_img = cv2.GaussianBlur(vessel_img, (3, 3), 1)
+    # Step 3: Mask out outer region
+    mask = np.zeros(img.shape, dtype=np.uint8)
+    center = (img.shape[1] // 2, img.shape[0] // 2)
+    radius = int(scale * 0.9)
+    cv2.circle(mask, center, radius, (1, 1, 1), -1, lineType=8)
+    img = img * mask + 128 * (1 - mask)
+    return img
 
-    # Convert back to PIL
-    return Image.fromarray(vessel_img)
 
 def clahe_green_channel(img, use_median_blur=True):
     # Convert PIL to numpy
@@ -144,6 +129,7 @@ def clahe_green_channel(img, use_median_blur=True):
     # Convert back to PIL
     return Image.fromarray(img_rgb)
 
+
 def clahe_gaussian_blur(img, use_median_blur=False):
     # Convert PIL to numpy
     img = np.array(img)
@@ -167,6 +153,7 @@ def clahe_gaussian_blur(img, use_median_blur=False):
     # Convert back to PIL
     return Image.fromarray(img_rgb)
 
+
 def hist_equalization_median_blur(img, use_median_blur=True):
     # Convert PIL to numpy
     img = np.array(img)
@@ -189,6 +176,7 @@ def hist_equalization_median_blur(img, use_median_blur=True):
     # Convert back to PIL
     return Image.fromarray(img_rgb)
 
+
 def get_train_val_test_split(df):
     # Step 1: Split off test set (20%)
     train_val_df, test_df = train_test_split(
@@ -201,6 +189,7 @@ def get_train_val_test_split(df):
     )
 
     return train_df, val_df, test_df
+
 
 def load_data():
     df1 = pd.read_csv("data/aptos2019/train.csv")
@@ -230,6 +219,7 @@ def load_data():
     full_train_balanced = full_train_balanced.sample(frac=1, random_state=9).reset_index(drop=True)
 
     return full_train_balanced, full_val, test_df1, test_df2
+
 
 @torch.no_grad()
 def evaluate(model, dataloader):
