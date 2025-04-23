@@ -65,18 +65,16 @@ val_test_transforms = transforms.Compose([
     transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
 ])
 
-def get_data_loaders(train, val, test1, test2, batch_size, preprocess=None):
+def get_data_loaders(train, val, test, batch_size, preprocess=None):
     train_dataset = DiabeticRetinopathyDataset(train, 'data/aptos2019/train_images', 'data/diabetic_retinopathy/train', transform=train_transforms, preprocess=preprocess)
     val_dataset = DiabeticRetinopathyDataset(val, 'data/aptos2019/train_images', 'data/diabetic_retinopathy/train', transform=val_test_transforms, preprocess=preprocess)
-    test_dataset1 = DiabeticRetinopathyDataset(test1, 'data/aptos2019/train_images', 'data/diabetic_retinopathy/train', transform=val_test_transforms, preprocess=preprocess)
-    test_dataset2 = DiabeticRetinopathyDataset(test2, 'data/diabetic_retinopathy/train', 'data/diabetic_retinopathy/train', transform=val_test_transforms, preprocess=preprocess)
+    test_dataset = DiabeticRetinopathyDataset(test, 'data/aptos2019/train_images', 'data/diabetic_retinopathy/train', transform=val_test_transforms, preprocess=preprocess)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader1 = DataLoader(test_dataset1, batch_size=batch_size, shuffle=False)
-    test_loader2 = DataLoader(test_dataset2, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    return train_loader, val_loader, test_loader1, test_loader2, test_dataset1, test_dataset2
+    return train_loader, val_loader, test_loader, test_dataset
 
 
 def scale_radius(img, scale=300):
@@ -200,6 +198,7 @@ def load_data():
 
     full_train = pd.concat([train_df1, train_df2], ignore_index=True).sample(frac=1, random_state=9).reset_index(drop=True)
     full_val = pd.concat([val_df1, val_df2], ignore_index=True).sample(frac=1, random_state=9).reset_index(drop=True)
+    full_test = pd.concat([test_df1, test_df2], ignore_index=True).sample(frac=1, random_state=9).reset_index(drop=True)
 
     # Separate features and labels
     X = full_train.drop(columns=['level'])
@@ -218,7 +217,7 @@ def load_data():
     full_train_balanced = pd.concat([X_balanced, y_balanced], axis=1)
     full_train_balanced = full_train_balanced.sample(frac=1, random_state=9).reset_index(drop=True)
 
-    return full_train_balanced, full_val, test_df1, test_df2
+    return full_train_balanced, full_val, full_test
 
 
 @torch.no_grad()
