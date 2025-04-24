@@ -81,20 +81,22 @@ def get_data_loaders(train, val, test, batch_size, preprocess=None):
 
 
 def scale_radius(img, scale=300):
-    # Estimate radius from middle row intensity
     x = img[img.shape[0] // 2, :, :].sum(1)
     r = (x > x.mean() / 10).sum() / 2
+    if r == 0:
+        r = 1e-5  # Prevent divide-by-zero
     s = scale * 1.0 / r
     return cv2.resize(img, (0, 0), fx=s, fy=s)
 
 
 def gaussian_subtractive_normalization(img, scale=300):
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) 
+    img = np.array(img)  # Convert PIL Image to NumPy array
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR) 
 
     # Step 1: Scale to standard radius
     img = scale_radius(img, scale)
 
-    # Step 2: Subtract local average color (local contrast normalization)
+    # Step 2: Subtract local average color
     blur = cv2.GaussianBlur(img, (0, 0), scale / 30)
     img = cv2.addWeighted(img, 4, blur, -4, 128)
 
@@ -104,7 +106,9 @@ def gaussian_subtractive_normalization(img, scale=300):
     radius = int(scale * 0.9)
     cv2.circle(mask, center, radius, (1, 1, 1), -1, lineType=8)
     img = img * mask + 128 * (1 - mask)
-    return img
+
+    # Convert back to PIL
+    return Image.fromarray(img)
 
 
 def clahe_green_channel(img, use_median_blur=True):
