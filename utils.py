@@ -41,6 +41,9 @@ class DiabeticRetinopathyDataset(Dataset):
             img_path = self.png_dir + '/' + img_filename + '.png'
             image = Image.open(img_path).convert('RGB')
 
+        if self.preprocess:
+            image = self.preprocess(image)
+
         if self.transform:
             image = self.transform(image)
 
