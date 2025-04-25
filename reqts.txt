@@ -1,9 +1,0 @@
-torch==2.5.1
-torchvision==0.18.1
-scikit-learn==1.6.1 -
-scipy==1.13.1 -
-matplotlib==3.9.2 -
-tqdm==4.67.1 
-numpy==2.0.2 -
-opencv==4.10.0 -
-peft==0.15.0 -
