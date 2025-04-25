@@ -33,7 +33,7 @@ pip3 install -r requirements.txt
 ```
 
 ### Fine-tune ResNet-50
-ResNet code is found in the [resNet notebook]()
+ResNet code is found in the [resNet notebook](resnet_train_eval.ipynb)
 
 1. 
 
