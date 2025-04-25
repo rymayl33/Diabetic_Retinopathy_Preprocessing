@@ -1,4 +1,3 @@
-# File to store reusable helper functions
 from sklearn.metrics import precision_score, recall_score, f1_score
 import torch.nn as nn
 import torch
@@ -17,6 +16,8 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class DiabeticRetinopathyDataset(Dataset):
     def __init__(self, dataframe, png_dir, jpeg_dir, transform=None, preprocess=None):
@@ -42,16 +43,23 @@ class DiabeticRetinopathyDataset(Dataset):
             image = Image.open(img_path).convert('RGB')
 
         if self.preprocess:
-            image = self.preprocess(image)
+            processed_image = self.preprocess(image)  # Apply/run preprocessing
+            # Check if preprocess returned a NumPy array or PIL Image
+            if isinstance(processed_image, np.ndarray):
+                image = Image.fromarray(processed_image.astype(np.uint8))  # Convert NumPy to PIL
+            else:
+                image = processed_image  # Already a PIL Image
 
         if self.transform:
             image = self.transform(image)
 
         return image, label
 
+#Define normalization constants
 imagenet_mean = [0.485, 0.456, 0.406]
 imagenet_std  = [0.229, 0.224, 0.225]
 
+#Training transformations/data augment.
 train_transforms = transforms.Compose([
     transforms.Resize(224),
     transforms.RandomResizedCrop(224, scale=(0.85, 1.0)),
@@ -61,6 +69,7 @@ train_transforms = transforms.Compose([
     transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
 ])
 
+#Validation transformations
 val_test_transforms = transforms.Compose([
     transforms.Resize(224),
     transforms.CenterCrop(224), 
@@ -68,6 +77,7 @@ val_test_transforms = transforms.Compose([
     transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
 ])
 
+#Create data loaders for train/val/test sets
 def get_data_loaders(train, val, test, batch_size, preprocess=None):
     train_dataset = DiabeticRetinopathyDataset(train, 'data/aptos2019/train_images', 'data/diabetic_retinopathy/train', transform=train_transforms, preprocess=preprocess)
     val_dataset = DiabeticRetinopathyDataset(val, 'data/aptos2019/train_images', 'data/diabetic_retinopathy/train', transform=val_test_transforms, preprocess=preprocess)
@@ -81,14 +91,19 @@ def get_data_loaders(train, val, test, batch_size, preprocess=None):
 
 
 def scale_radius(img, scale=300):
+    # Estimate radius from middle row intensity
     x = img[img.shape[0] // 2, :, :].sum(1)
     r = (x > x.mean() / 10).sum() / 2
-    if r == 0:
-        r = 1e-5  # Prevent divide-by-zero
-    s = scale * 1.0 / r
+    
+    # Prevent cases where radius estimation may fail
+    if r < 1e-6:  # If radius is too small or zero
+        r = scale / 2  # Default radius
+        print(f"Warning: Radius estimation failed, using default radius {r}")
+    
+    s = scale * 1.0 / r #scale factor
     return cv2.resize(img, (0, 0), fx=s, fy=s)
 
-
+#Preprocessing: Gaussian Subrative Normalization
 def gaussian_subtractive_normalization(img, scale=300):
     img = np.array(img)  # Convert PIL Image to NumPy array
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR) 
@@ -110,9 +125,9 @@ def gaussian_subtractive_normalization(img, scale=300):
     # Convert back to PIL
     return Image.fromarray(img)
 
-
+#Preprocessing: CLAHE on Green Channel w/ Median Filter
 def clahe_green_channel(img, use_median_blur=True):
-    # Convert PIL to numpy
+    # PIL to numpy
     img = np.array(img)
 
     # Select Green Channel
@@ -122,24 +137,22 @@ def clahe_green_channel(img, use_median_blur=True):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     img_clahe = clahe.apply(green_img)
 
-    # Optional Blur (Gaussian by default)
+    # Median Blur
     if use_median_blur:
         img_blur = cv2.medianBlur(img_clahe, 3)
-    else:
-        img_blur = cv2.GaussianBlur(img_clahe, (3, 3), 0)
 
-    # Convert back to RGB (since the model expects 3 channels)
+    # Convert back to RGB
     img_rgb = cv2.cvtColor(img_blur, cv2.COLOR_GRAY2RGB)
 
-    # Convert back to PIL
+    # Convert to PIL
     return Image.fromarray(img_rgb)
 
-
+#Preprocessing: CLAHE w/ Gaussian Filter
 def clahe_gaussian_blur(img, use_median_blur=False):
-    # Convert PIL to numpy
+    # PIL to numpy
     img = np.array(img)
 
-    # Convert to Grayscale
+    # Convert to grayscale
     img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
     # Apply CLAHE
@@ -158,7 +171,7 @@ def clahe_gaussian_blur(img, use_median_blur=False):
     # Convert back to PIL
     return Image.fromarray(img_rgb)
 
-
+#Preprocessing: Histogram Equalization and Median Filter
 def hist_equalization_median_blur(img, use_median_blur=True):
     # Convert PIL to numpy
     img = np.array(img)
@@ -183,12 +196,12 @@ def hist_equalization_median_blur(img, use_median_blur=True):
 
 
 def get_train_val_test_split(df):
-    # Step 1: Split off test set (20%)
+    # Test set (20%)
     train_val_df, test_df = train_test_split(
         df, test_size=0.20, stratify=df["level"], random_state=42
     )
 
-    # Step 2: Split train_val into train (70%) and val (10%)
+    # Train/val set (80%)
     train_df, val_df = train_test_split(
     train_val_df, test_size=0.125, stratify=train_val_df["level"], random_state=42
     )
@@ -229,13 +242,12 @@ def load_data():
 
 @torch.no_grad()
 def evaluate(model, dataloader):
-    # Define device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Define loss function (same as in your training loop)
+    # Define loss function
     criterion = nn.CrossEntropyLoss()
 
-    model.eval()
+    model.eval() #Evaluation mode
     correct = 0
     total = 0
     running_loss = 0.0
@@ -257,9 +269,9 @@ def evaluate(model, dataloader):
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(labels.cpu().numpy())
 
+    #Metrics
     accuracy = correct / total
     avg_loss = running_loss / len(dataloader)
-
     precision = precision_score(all_labels, all_preds, average='weighted', zero_division=0)
     recall = recall_score(all_labels, all_preds, average='weighted', zero_division=0)
     f1 = f1_score(all_labels, all_preds, average='weighted', zero_division=0)
